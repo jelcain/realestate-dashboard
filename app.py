@@ -21,7 +21,7 @@ except Exception:  # noqa: BLE001 - 로컬에는 secrets 파일이 없다
 
 import pandas as pd  # noqa: E402
 
-from settings import web_mode  # noqa: E402
+from settings import app_version, web_mode  # noqa: E402
 from ui import add_complex, collect, complex_block, data, filters, news_panel, pages, sync_ui  # noqa: E402
 
 
@@ -104,3 +104,4 @@ if login():
         page_list.append(st.Page(pages.mapping_page, title="단지 매핑", icon="🔗", url_path="mapping"))
     page_list.append(st.Page(pages.status_page, title="수집 현황", icon="🗂️", url_path="status"))
     st.navigation(page_list).run()
+    st.sidebar.caption(f"프로그램 버전: {app_version()}")

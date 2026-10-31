@@ -21,6 +21,27 @@ def db_dir() -> Path:
     return Path(os.getenv("REALESTATE_DB_DIR") or ROOT / config()["db_dir"])
 
 
+@lru_cache
+def app_version() -> str:
+    """실행 중인 코드의 버전 (git 커밋 번호·날짜). 웹과 PC 가 같은 코드인지 확인용"""
+    import subprocess
+    try:
+        r = subprocess.run(["git", "log", "-1", "--format=%h · %cd", "--date=format:%m/%d %H:%M"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=5,
+                           creationflags=0x08000000 if os.name == "nt" else 0)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except Exception:  # noqa: BLE001 - git 이 없으면 .git 파일에서 읽는다
+        pass
+    try:
+        head = (ROOT / ".git" / "HEAD").read_text().strip()
+        if head.startswith("ref: "):
+            head = (ROOT / ".git" / head[5:]).read_text().strip()
+        return head[:7]
+    except OSError:
+        return "알 수 없음"
+
+
 def web_mode() -> bool:
     """웹(Streamlit Community Cloud) 보기 전용 모드: MYBOX 에서 받기만 하고, 수집·등록·수정은 숨긴다"""
     return os.getenv("WEB_MODE") == "1"
