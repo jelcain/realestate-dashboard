@@ -2,11 +2,12 @@
 
 선택 옵션: config news.llm.enabled 이면 로컬 LLM(Ollama)으로 문장 요약을 만들고, 실패하면 발췌 요약을 쓴다.
 """
-from datetime import date
+from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from functools import lru_cache
 import json
 import logging
+import os
 import re
 
 import httpx
@@ -20,6 +21,8 @@ from db.models import NewsDaily, Session, log_collect
 from settings import config
 
 log = logging.getLogger(__name__)
+
+LINKS_KEPT = 10  # 이슈마다 저장할 원문 링크 수 (화면에는 5개)
 
 
 @lru_cache
@@ -164,18 +167,28 @@ def build(articles: list[dict]) -> list[dict]:
     return out
 
 
-def run(news_date: date | None = None) -> int:
+def run() -> int:
+    """한 회차 수집. 회차 = 수집 시각의 '시' (05·11·17시 예약, 수동 수집은 그때 시각).
+    같은 날 같은 회차를 다시 수집하면 덮어쓰고, 보관 기간(news.keep_days)이 지난 뉴스는 지운다."""
     from collectors.news_rss import collect
 
-    news_date = news_date or date.today()
+    now = datetime.now()
+    # 예약 실행은 GitHub 이 늦게 시작해도 예약 시각(5·11·17)으로 저장한다 (daily.yml 이 NEWS_EDITION 지정)
+    edition = int(os.getenv("NEWS_EDITION") or now.hour)
     try:
         items = build(collect())
         with Session.begin() as s:
-            s.execute(delete(NewsDaily).where(NewsDaily.news_date == news_date))
+            s.execute(delete(NewsDaily).where(NewsDaily.news_date == now.date(), NewsDaily.edition == edition))
             for rank, it in enumerate(items, 1):
-                s.add(NewsDaily(news_date=news_date, rank=rank, title=it["title"], summary=it["summary"],
+                s.add(NewsDaily(news_date=now.date(), edition=edition, rank=rank, collected_at=now,
+                                title=it["title"], summary=it["summary"],
                                 article_count=it["article_count"], source_count=it["source_count"],
-                                urls=json.dumps(it["links"], ensure_ascii=False), method=it["method"]))
+                                urls=json.dumps(it["links"][:LINKS_KEPT], ensure_ascii=False), method=it["method"]))
+            keep = int(config()["news"].get("keep_days", 365))
+            if keep > 0:
+                old = s.execute(delete(NewsDaily).where(NewsDaily.news_date < now.date() - timedelta(days=keep)))
+                if old.rowcount:
+                    log.info("보관 기간(%d일) 지난 뉴스 %d건 삭제", keep, old.rowcount)
         log_collect("news", "ok", len(items))
         return len(items)
     except Exception as e:  # noqa: BLE001

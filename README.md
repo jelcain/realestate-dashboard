@@ -52,7 +52,7 @@ powershell -ExecutionPolicy Bypass -File .\register_task.ps1
 
 | 담당 | 수집 | 저장 (MYBOX `realestate-dashboard` 폴더) |
 |---|---|---|
-| GitHub Actions (`.github/workflows/daily.yml`, 매일 05:00) | 국토부 실거래, 뉴스 | `cloud.db.gz` |
+| GitHub Actions (`.github/workflows/daily.yml`, 05:00 실거래·뉴스, 11:00·17:00 뉴스) | 국토부 실거래, 뉴스 (회차별 보관, `news.keep_days` 365일) | `cloud.db.gz` |
 | PC (작업 스케줄러 `RealEstateListing`: 매일 20:00 + 로그인 시, 하루 한 번) | 네이버 단지 정보·매물 | `pc.db.gz` |
 
 - 네이버페이 부동산은 해외 데이터센터 IP 를 막아서 매물은 PC 가 맡는다 (`scripts/naver_probe.py` 로 확인).

@@ -60,7 +60,8 @@ def refresh():
     info = _pull()
     if info["changed"] and st.session_state.get("pulled_at") != info["checked"]:
         st.session_state["pulled_at"] = info["checked"]
-        for fn in (data.watched_complexes, data.area_types, data.trades, data.news, data.collect_status,
+        for fn in (data.watched_complexes, data.area_types, data.trades, data.news, data.news_editions,
+                   data.collect_status,
                    data.last_ok, data.listings, data.unwatched):
             fn.clear()
     with st.sidebar:

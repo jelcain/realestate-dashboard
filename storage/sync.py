@@ -101,10 +101,12 @@ def pull(name: str, force: bool = False) -> bool:
 
 def _replace(new: Path, dst: Path):
     """열린 연결을 닫고, 이전 WAL 파일까지 지운 뒤 새 파일로 바꾼다"""
-    from db.models import engine
+    from db.models import CLOUD_DB, _migrate_news, engine
     engine.dispose()
     for suffix in ("-wal", "-shm"):
         p = Path(str(dst) + suffix)
         if p.exists():
             os.remove(p)
     os.replace(new, dst)
+    if dst == CLOUD_DB:
+        _migrate_news(dst)  # 예전 프로그램이 올린 파일이어도 지금 구조로 맞춘다

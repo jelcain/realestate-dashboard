@@ -1,8 +1,11 @@
 name: 일일 수집 (실거래·뉴스)
 
 on:
+  # 시간은 UTC (한국 시간 - 9). GitHub 사정으로 몇 분~수십 분 늦을 수 있다
   schedule:
-    - cron: "0 20 * * *"   # 매일 05:00 KST (UTC 20:00). GitHub 사정으로 몇 분~수십 분 늦을 수 있다
+    - cron: "0 20 * * *"   # 05:00 KST: 실거래 + 뉴스
+    - cron: "0 2 * * *"    # 11:00 KST: 뉴스
+    - cron: "0 8 * * *"    # 17:00 KST: 뉴스
   workflow_dispatch:
     inputs:
       complex:
@@ -42,7 +45,14 @@ jobs:
         env:
           IN_COMPLEX: ${{ inputs.complex }}
           IN_ONLY: ${{ inputs.only }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
+          # 예약 실행: 05시만 실거래까지, 11·17시는 뉴스만. 늦게 시작해도 뉴스 회차는 예약 시각으로 저장
+          case "$SCHEDULE" in
+            "0 20 * * *") export NEWS_EDITION=5 ;;
+            "0 2 * * *")  export NEWS_EDITION=11; IN_ONLY=news ;;
+            "0 8 * * *")  export NEWS_EDITION=17; IN_ONLY=news ;;
+          esac
           if [ -z "$MYBOX_TOKEN" ] || [ -z "$MOLIT_SERVICE_KEY" ]; then
             echo "::warning::MYBOX_TOKEN 또는 MOLIT_SERVICE_KEY 시크릿이 없어 수집을 건너뜁니다"
             exit 0

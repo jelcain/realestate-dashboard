@@ -64,12 +64,16 @@ def listings(complex_id: int) -> tuple[pd.DataFrame, str | None]:
 
 
 @st.cache_data(ttl=300)
-def news(news_date: str | None = None) -> tuple[pd.DataFrame, list[str]]:
-    dates = _q("SELECT DISTINCT news_date FROM news_daily ORDER BY news_date DESC LIMIT 60")["news_date"].astype(str).tolist()
-    if not dates:
-        return pd.DataFrame(), []
-    d = news_date or dates[0]
-    return _q("SELECT * FROM news_daily WHERE news_date = :d ORDER BY rank", d=d), dates
+def news_editions() -> list[tuple[str, int]]:
+    """[(날짜, 회차 시)] 최신순. 회차 = 수집 시각의 시 (05·11·17)"""
+    df = _q("""SELECT DISTINCT news_date, edition FROM news_daily
+               ORDER BY news_date DESC, edition DESC LIMIT 300""")
+    return [(str(r.news_date), int(r.edition)) for r in df.itertuples()]
+
+
+@st.cache_data(ttl=300)
+def news(news_date: str, edition: int) -> pd.DataFrame:
+    return _q("SELECT * FROM news_daily WHERE news_date = :d AND edition = :e ORDER BY rank", d=news_date, e=edition)
 
 
 @st.cache_data(ttl=120)

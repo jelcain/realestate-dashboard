@@ -147,9 +147,12 @@ class ListingSnapshot(PcBase):
 
 
 class NewsDaily(CloudBase):
+    """뉴스 요약. 하루 여러 번(05·11·17시) 수집하므로 회차(edition = 수집 시각의 시)별로 따로 보관한다"""
     __tablename__ = "news_daily"
     news_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    edition: Mapped[int] = mapped_column(Integer, primary_key=True)
     rank: Mapped[int] = mapped_column(Integer, primary_key=True)
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime)
     title: Mapped[str] = mapped_column(String(300))
     summary: Mapped[str | None] = mapped_column(Text)
     article_count: Mapped[int] = mapped_column(Integer)
@@ -209,7 +212,32 @@ def _create(base, path):
     e.dispose()
 
 
+def _migrate_news(path):
+    """예전 news_daily(날짜·순위만 키)를 회차(edition) 키가 있는 새 표로 옮긴다. 예전 자료는 05시 회차로 본다"""
+    import sqlite3
+    if not path.exists():
+        return
+    con = sqlite3.connect(path)
+    try:
+        cols = [r[1] for r in con.execute("PRAGMA table_info(news_daily)")]
+        if cols and "edition" not in cols:
+            con.execute("ALTER TABLE news_daily RENAME TO news_daily_old")
+            con.commit()
+            con.close()
+            _create(CloudBase, path)
+            con = sqlite3.connect(path)
+            con.execute("""INSERT INTO news_daily (news_date, edition, rank, collected_at, title, summary,
+                                                   article_count, source_count, urls, method)
+                           SELECT news_date, 5, rank, NULL, title, summary, article_count, source_count, urls, method
+                           FROM news_daily_old""")
+            con.execute("DROP TABLE news_daily_old")
+            con.commit()
+    finally:
+        con.close()
+
+
 _create(PcBase, PC_DB)
+_migrate_news(CLOUD_DB)
 _create(CloudBase, CLOUD_DB)
 
 engine = create_engine(f"sqlite:///{PC_DB}", future=True)
