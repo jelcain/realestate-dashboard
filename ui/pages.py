@@ -74,11 +74,12 @@ def status_page():
                 "단지 정보·매물은 이 PC 가 수집합니다. 자료는 MYBOX 에 보관됩니다.")
         cloud_runs()
     st.subheader("최근 실행")
-    st.dataframe(_q("""SELECT run_at AS 실행시각, 'PC' AS 위치, collector AS 수집기, status AS 결과, count AS 건수,
-                              error AS 오류 FROM collect_log
-                       UNION ALL
-                       SELECT run_at, '클라우드', collector, status, count, error FROM cloud_log
-                       ORDER BY 1 DESC LIMIT 50"""), hide_index=True, width="stretch")
+    logs = _q("""SELECT substr(run_at, 1, 16) AS 실행시각, 'PC' AS 위치, collector AS 수집기, status AS 결과,
+                        count AS 건수, COALESCE(error, '') AS 오류 FROM collect_log
+                 UNION ALL
+                 SELECT substr(run_at, 1, 16), '클라우드', collector, status, count, COALESCE(error, '') FROM cloud_log
+                 ORDER BY 1 DESC LIMIT 50""")
+    st.dataframe(logs, hide_index=True, width="stretch")
     st.subheader("국토부 실거래 적재 진행")
     prog = _q("""SELECT sgg_cd AS 시군구코드, api AS API, COUNT(*) AS 받은개월, MIN(deal_ym) AS 시작월,
                         MAX(deal_ym) AS 마지막월, SUM(rows) AS 건수
