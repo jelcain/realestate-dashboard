@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
-from processing.metrics import area_bucket, area_label, fmt_money, fmt_range, monthly_series, snap_area, to_pyeong
+from processing.metrics import area_bucket, area_label, fmt_money, fmt_range, period_series, period_start, snap_area, to_pyeong
 from settings import config, web_mode
 from ui import collect, data
 from ui.filters import Filters
@@ -38,14 +38,25 @@ def _short(a: float, supply: dict) -> str:
     return s + (f"·공급{to_pyeong(supply[a]):.0f}평" if supply.get(a) else "")
 
 
-def _layout(fig: go.Figure, title: str, n_series: int, y_title: str):
+# 그래프 집계 단위: 조회 기간 1년이면 주간, 그보다 길면 월간
+FREQ_LABEL = {"W": "주간", "M": "월간"}
+
+
+def freq_for(years: int) -> str:
+    return "W" if years <= 1 else "M"
+
+
+def _layout(fig: go.Figure, title: str, n_series: int, y_title: str, freq: str):
     fig.update_layout(
-        title=dict(text=title, font=dict(size=15), x=0, xanchor="left"),
+        title=dict(text=f"{title} <span style='font-size:12px;color:{MUTED}'>· {FREQ_LABEL[freq]}</span>",
+                   font=dict(size=15), x=0, xanchor="left"),
         height=360, margin=dict(l=8, r=8, t=40, b=8), hovermode="x unified", barmode="stack", bargap=0.2,
         showlegend=n_series >= 2, legend=dict(orientation="h", yanchor="bottom", y=1.0, x=1, xanchor="right",
                                               font=dict(size=11)),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-    fig.update_xaxes(showgrid=False, linecolor=GRID, tickfont=dict(color=MUTED), tickformat="%y.%m")
+    # 마우스를 올렸을 때 머리글: 주간은 그 주 월요일 날짜, 월간은 연·월
+    fig.update_xaxes(showgrid=False, linecolor=GRID, tickfont=dict(color=MUTED), tickformat="%y.%m",
+                     hoverformat="%y.%m.%d 주" if freq == "W" else "%Y년 %m월")
     fig.update_yaxes(gridcolor=GRID, zeroline=False, tickfont=dict(color=MUTED))
     fig.update_yaxes(title_text=y_title, title_font=dict(color=MUTED, size=11), row=1, col=1)
     fig.update_yaxes(title_text="건수", title_font=dict(color=MUTED, size=11), row=2, col=1)
@@ -56,8 +67,9 @@ def _empty(title: str):
     st.caption("해당 기간·평형의 거래가 없습니다.")
 
 
-def trend_chart(df: pd.DataFrame, kind: str, areas: list[float], colors: dict, supply: dict, key: str):
-    """선: 월별 중위 가격 / 막대: 월별 거래 건수 (같은 x축, 위아래 두 패널)"""
+def trend_chart(df: pd.DataFrame, kind: str, areas: list[float], colors: dict, supply: dict, key: str,
+                freq: str = "M"):
+    """선: 기간별(월·주) 중위 가격 / 막대: 기간별 거래 건수 (같은 x축, 위아래 두 패널)"""
     value = {"매매": "price", "전세": "deposit", "월세": "converted"}[kind]
     title = {"매매": "매매 추이", "전세": "전세 추이", "월세": "월세 추이 (전세 환산가)"}[kind]
     d = df[(df["kind"] == kind) & df["area"].isin(areas)]
@@ -68,11 +80,11 @@ def trend_chart(df: pd.DataFrame, kind: str, areas: list[float], colors: dict, s
         da = d[d["area"] == a].copy()
         if da.empty:
             continue
-        da["month"] = da["contract_date"].dt.to_period("M").dt.to_timestamp()
+        da["period"] = period_start(da["contract_date"], freq)
         agg = {"median": (value, "median"), "count": (value, "count")}
         if kind == "월세":
             agg |= {"dep": ("deposit", "median"), "rent": ("monthly_rent", "median")}
-        m = da.groupby("month").agg(**agg).reset_index()
+        m = da.groupby("period").agg(**agg).reset_index()
         name = _short(a, supply)
         if kind == "월세":
             custom = list(zip(m["count"], m["dep"].map(fmt_money), m["rent"].map(lambda v: f"{v:,.0f}만")))
@@ -80,17 +92,17 @@ def trend_chart(df: pd.DataFrame, kind: str, areas: list[float], colors: dict, s
         else:
             custom = list(zip(m["count"]))
             ht = "%{y:.2f}억 (%{customdata[0]}건)"
-        fig.add_trace(go.Scatter(x=m["month"], y=m["median"] / 10000, mode="lines+markers", name=name,
+        fig.add_trace(go.Scatter(x=m["period"], y=m["median"] / 10000, mode="lines+markers", name=name,
                                  line=dict(color=colors[a], width=2), marker=dict(size=7, color=colors[a],
                                  line=dict(width=1.5, color="white")), customdata=custom,
                                  hovertemplate=ht + f"<extra>{name}</extra>"), row=1, col=1)
-        fig.add_trace(go.Bar(x=m["month"], y=m["count"], marker=dict(color=colors[a], opacity=0.55),
+        fig.add_trace(go.Bar(x=m["period"], y=m["count"], marker=dict(color=colors[a], opacity=0.55),
                              name=name, showlegend=False, hovertemplate="%{y}건<extra></extra>"), row=2, col=1)
-    _layout(fig, title, len(areas), "중위가 (억)")
+    _layout(fig, title, len(areas), "중위가 (억)", freq)
     st.plotly_chart(fig, width="stretch", key=key, config={"displayModeBar": False})
 
 
-def rent_band_chart(df: pd.DataFrame, areas: list[float], key: str):
+def rent_band_chart(df: pd.DataFrame, areas: list[float], key: str, freq: str = "M"):
     """보조 보기: 보증금 구간별 월세 추이"""
     d = df[(df["kind"] == "월세") & df["area"].isin(areas)]
     title = "월세 추이 (보증금 구간별 월세)"
@@ -102,15 +114,15 @@ def rent_band_chart(df: pd.DataFrame, areas: list[float], key: str):
         db = d[(d["deposit"] >= b["min"]) & (d["deposit"] < b["max"])]
         if db.empty:
             continue
-        m = monthly_series(db, "monthly_rent")
+        m = period_series(db, "monthly_rent", freq)
         color = PALETTE[i]
-        fig.add_trace(go.Scatter(x=m["month"], y=m["median"], mode="lines+markers", name=b["name"],
+        fig.add_trace(go.Scatter(x=m["period"], y=m["median"], mode="lines+markers", name=b["name"],
                                  line=dict(color=color, width=2), marker=dict(size=7, color=color),
                                  customdata=m["count"], hovertemplate="월 %{y:,.0f}만 (%{customdata}건)"),
                       row=1, col=1)
-        fig.add_trace(go.Bar(x=m["month"], y=m["count"], marker=dict(color=color, opacity=0.55), name=b["name"],
+        fig.add_trace(go.Bar(x=m["period"], y=m["count"], marker=dict(color=color, opacity=0.55), name=b["name"],
                              showlegend=False, hovertemplate="%{y}건<extra></extra>"), row=2, col=1)
-    _layout(fig, title, len(bands), "월세 중위 (만원)")
+    _layout(fig, title, len(bands), "월세 중위 (만원)", freq)
     st.plotly_chart(fig, width="stretch", key=key, config={"displayModeBar": False})
 
 
@@ -250,7 +262,8 @@ def render(cx: pd.Series, f: Filters):
         if f.new_only and not T_chart.empty:
             T_chart = T_chart[(T_chart["kind"] == "매매") | (T_chart["contract_type"] == "신규")]
 
-        # R1: 그래프 가로 배치
+        # R1: 그래프 가로 배치 (조회 기간 1년이면 주간, 그 이상이면 월간)
+        freq = freq_for(f.years)
         if f.kinds:
             cols = st.columns(len(f.kinds))
             for col, k in zip(cols, f.kinds):
@@ -258,9 +271,9 @@ def render(cx: pd.Series, f: Filters):
                     if T_chart.empty:
                         _empty(f"{k} 추이")
                     elif k == "월세" and st.session_state.get(f"band_{cid}"):
-                        rent_band_chart(T_chart, areas, key=f"c_{cid}_band")
+                        rent_band_chart(T_chart, areas, key=f"c_{cid}_band", freq=freq)
                     else:
-                        trend_chart(T_chart, k, areas, colors, supply, key=f"c_{cid}_{k}")
+                        trend_chart(T_chart, k, areas, colors, supply, key=f"c_{cid}_{k}", freq=freq)
             if "월세" in f.kinds:
                 st.toggle("월세: 보증금 구간별 월세 보기", key=f"band_{cid}")
 

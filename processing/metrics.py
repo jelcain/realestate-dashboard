@@ -57,15 +57,19 @@ def fmt_range(lo, hi) -> str:
     return f"{fmt_money(lo)}~{fmt_money(hi)}"
 
 
-def monthly_series(df: pd.DataFrame, value_col: str, group_col: str | None = None) -> pd.DataFrame:
-    """월별 중위값 + 건수. df: contract_date, value_col, (group_col)"""
+def period_start(dates: pd.Series, freq: str) -> pd.Series:
+    """freq 'M': 그달 1일, 'W': 그 주 월요일"""
+    p = pd.to_datetime(dates).dt.to_period("W-SUN" if freq == "W" else "M")
+    return p.dt.start_time.dt.normalize()
+
+
+def period_series(df: pd.DataFrame, value_col: str, freq: str = "M") -> pd.DataFrame:
+    """기간별(월·주) 중위값 + 건수. df: contract_date, value_col → period, median, count"""
     if df.empty:
-        return pd.DataFrame(columns=["month", "median", "count"] + ([group_col] if group_col else []))
+        return pd.DataFrame(columns=["period", "median", "count"])
     d = df.copy()
-    d["month"] = pd.to_datetime(d["contract_date"]).dt.to_period("M").dt.to_timestamp()
-    keys = ["month"] + ([group_col] if group_col else [])
-    out = d.groupby(keys)[value_col].agg(median="median", count="count").reset_index()
-    return out
+    d["period"] = period_start(d["contract_date"], freq)
+    return d.groupby("period")[value_col].agg(median="median", count="count").reset_index()
 
 
 def snap_area(values: pd.Series, known: list[float], tol: float = 1.0) -> pd.Series:
