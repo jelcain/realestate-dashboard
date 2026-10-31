@@ -70,10 +70,10 @@ def mapping_page():
 def status_page():
     st.header("수집 현황")
     if web_mode():
-        st.info("🌐 웹 보기 전용: 실거래·뉴스는 매일 05:00 클라우드가, 매물은 집 PC 가 수집해 MYBOX 에 올린 자료를 "
+        st.info("🌐 웹 보기 전용: 실거래(05시)·뉴스(05·11·17시)는 클라우드가, 매물은 집 PC 가 수집해 MYBOX 에 올린 자료를 "
                 "보여 줍니다. 수집·복원은 집 PC 대시보드에서 하세요.")
     elif cloud_mode():
-        st.info("☁️ 클라우드 분담 모드: 실거래·뉴스는 GitHub 이 매일 05:00 에 수집하고, "
+        st.info("☁️ 클라우드 분담 모드: 실거래는 매일 05시, 뉴스는 05·11·17시에 GitHub 이 수집하고, "
                 "단지 정보·매물은 이 PC 가 수집합니다. 자료는 MYBOX 에 보관됩니다.")
         cloud_runs()
     unwatched_section()
