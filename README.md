@@ -2,6 +2,9 @@
 
 관심 단지의 실거래 추이, 매물 현황·상세, 일일 부동산 뉴스 요약을 보여 주는 개인용 대시보드. (계획서 v1.2 기준 MVP)
 
+**안내서**: [사용 안내서](사용%20안내서.md) · [토큰·키 갱신 안내서](토큰·키%20갱신%20안내서.md) · [관리 안내서](관리%20안내서.md)
+· 상태 점검은 `점검 실행.bat`
+
 ## 처음 설치
 
 ```powershell
@@ -31,8 +34,14 @@ copy .env.example .env      # 그다음 .env 에 공공데이터포털 키 입�
 .\.venv\Scripts\python run_daily.py --only listing,news   # 일부만
 .\.venv\Scripts\python run_daily.py --complex 236         # 특정 단지만
 
-# 매일 05:00 자동 실행 등록
+# 작업 스케줄러용: 오늘 전체 매물 수집을 마쳤으면 건너뜀
+.\.venv\Scripts\python run_daily.py --auto
+
+# PC 매물 자동 수집 등록 (매일 20:00 + 로그인 1분 뒤, 하루 한 번) / 해제는 -Remove
 powershell -ExecutionPolicy Bypass -File .\register_task.ps1
+
+# 상태 점검
+.\.venv\Scripts\python scripts\check_health.py
 ```
 
 ## 클라우드 분담 모드 (PC 가 꺼져 있어도 실거래·뉴스 수집)
@@ -42,7 +51,7 @@ powershell -ExecutionPolicy Bypass -File .\register_task.ps1
 | 담당 | 수집 | 저장 (MYBOX `realestate-dashboard` 폴더) |
 |---|---|---|
 | GitHub Actions (`.github/workflows/daily.yml`, 매일 05:00) | 국토부 실거래, 뉴스 | `cloud.db.gz` |
-| PC (켜져 있을 때, 작업 스케줄러 05:00) | 네이버 단지 정보·매물 | `pc.db.gz` |
+| PC (작업 스케줄러 `RealEstateListing`: 매일 20:00 + 로그인 시, 하루 한 번) | 네이버 단지 정보·매물 | `pc.db.gz` |
 
 - 네이버페이 부동산은 해외 데이터센터 IP 를 막아서 매물은 PC 가 맡는다 (`scripts/naver_probe.py` 로 확인).
 - 대시보드는 10분마다 MYBOX 에서 새 `cloud.db` 를 받는다.

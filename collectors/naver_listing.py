@@ -82,6 +82,8 @@ def collect_complex(client: NaverClient, complex_id: int, today: date | None = N
 
 
 def run(complex_ids: list[int] | None = None, client: NaverClient | None = None) -> int:
+    # 전체 관심 단지 수집만 'naver_listing' 으로 기록한다 (자동 수집의 '하루 한 번' 판단과 수집 지연 경고에 쓰임)
+    name = "naver_listing" if complex_ids is None else "naver_listing_complex"
     if complex_ids is None:
         with Session() as s:
             complex_ids = list(s.scalars(select(Watchlist.complex_id)))
@@ -93,13 +95,13 @@ def run(complex_ids: list[int] | None = None, client: NaverClient | None = None)
             n = collect_complex(client, cid)
             total, done = total + n, done + 1
             log.info("매물 %s: %d건 (%d/%d)", cid, n, done, len(complex_ids))
-        log_collect("naver_listing", "ok", total)
+        log_collect(name, "ok", total)
     except Blocked as e:
         log.warning("네이버 차단 응답 → 수집 중단 (%d/%d 단지 완료): %s", done, len(complex_ids), e)
-        log_collect("naver_listing", "blocked", total, f"{done}/{len(complex_ids)} 단지 완료 후 중단: {e}")
+        log_collect(name, "blocked", total, f"{done}/{len(complex_ids)} 단지 완료 후 중단: {e}")
     except Exception as e:  # noqa: BLE001
         log.exception("매물 수집 오류")
-        log_collect("naver_listing", "error", total, f"{done}/{len(complex_ids)} 단지 완료 후 오류: {e}")
+        log_collect(name, "error", total, f"{done}/{len(complex_ids)} 단지 완료 후 오류: {e}")
     finally:
         if own:
             client.close()

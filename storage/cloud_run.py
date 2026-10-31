@@ -47,5 +47,18 @@ def recent_runs(limit: int = 5) -> list[dict]:
     return json.loads(out or "[]")
 
 
+def workflow_state() -> str:
+    """'active' 면 예약 실행이 켜져 있음 (60일 무활동 등으로 꺼지면 'disabled_inactivity')"""
+    gh = _gh()
+    if not gh:
+        raise RuntimeError("GitHub CLI(gh)를 찾을 수 없습니다")
+    r = subprocess.run([gh, "api", f"repos/{config()['github_repo']}/actions/workflows/{WORKFLOW}", "--jq", ".state"],
+                       capture_output=True, text=True, encoding="utf-8", timeout=30,
+                       creationflags=0x08000000 if os.name == "nt" else 0)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout).strip()[:300])
+    return r.stdout.strip()
+
+
 def actions_url() -> str:
     return f"https://github.com/{config()['github_repo']}/actions/workflows/{WORKFLOW}"
