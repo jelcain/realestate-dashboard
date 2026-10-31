@@ -1,16 +1,24 @@
 """국토부 실거래 단지(apt_key) ↔ 네이버 단지ID 매핑.
 
-자동 매핑: 같은 시군구·같은 동 안에서 지번 일치 + 단지명 유사도로 점수를 매겨 기준 이상이면 연결한다.
-자동으로 못 찾은 단지는 수동 매핑 화면에서 처리한다 (method='manual' 은 자동 매핑이 덮어쓰지 않는다).
+자동 매핑(cloud.db apt_mapping): 같은 시군구·같은 동 안에서 지번 일치 + 단지명 유사도로 점수를 매겨
+기준 이상이면 연결한다. 실거래를 수집하는 쪽(클라우드, 로컬 모드에선 PC)이 계산한다.
+수동 매핑(pc.db manual_mapping): 단지 매핑 화면에서 사용자가 고친 결과. 자동 매핑보다 우선한다.
+화면은 EFFECTIVE_SQL 로 둘을 합쳐 쓴다.
 """
 from difflib import SequenceMatcher
 import re
 
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text
 
-from db.models import AptMapping, Complex, Session
+from db.models import AptMapping, Complex, ManualMapping, Session
 
 AUTO_THRESHOLD = 0.75
+
+# apt_key → 최종 단지ID (수동 우선, -1 은 '해당 없음')
+EFFECTIVE_SQL = """
+    SELECT m.apt_key, COALESCE(mm.complex_id, m.complex_id) AS complex_id
+    FROM apt_mapping m LEFT JOIN manual_mapping mm ON mm.apt_key = m.apt_key
+"""
 
 
 def norm_name(name: str | None) -> str:
@@ -49,47 +57,26 @@ def best_match(apt: dict, complexes: list[Complex]) -> tuple[int | None, float]:
 
 
 def apply_mappings():
-    """새 apt_key 등록 → 미확정 건 자동 매핑 → trade.complex_id 반영"""
+    """새 apt_key 등록 → 아직 못 찾은 건 자동 매핑 (새로 등록된 관심 단지가 있으면 그때 연결된다)"""
     with Session.begin() as s:
         s.execute(text("""
-            INSERT OR IGNORE INTO apt_mapping (apt_key, sgg_cd, umd_nm, jibun, apt_nm, complex_id, method, score)
-            SELECT apt_key, sgg_cd, umd_nm, jibun, apt_nm, NULL, 'auto', NULL
-            FROM trade GROUP BY apt_key
+            INSERT OR IGNORE INTO apt_mapping (apt_key, sgg_cd, umd_nm, jibun, apt_nm, complex_id, score)
+            SELECT apt_key, sgg_cd, umd_nm, jibun, apt_nm, NULL, NULL FROM trade GROUP BY apt_key
         """))
-        complexes = list(s.scalars(select(Complex)))
         by_sgg: dict[str, list[Complex]] = {}
-        for cx in complexes:
+        for cx in s.scalars(select(Complex)):
             by_sgg.setdefault((cx.legal_code or "")[:5], []).append(cx)
-        pending = s.scalars(select(AptMapping).where(AptMapping.method == "auto",
-                                                     AptMapping.complex_id.is_(None)))
-        for m in pending:
+        for m in s.scalars(select(AptMapping).where(AptMapping.complex_id.is_(None))):
             cands = by_sgg.get(m.sgg_cd)
-            if not cands:
-                continue
-            cid, sc = best_match({"umd_nm": m.umd_nm, "jibun": m.jibun, "apt_nm": m.apt_nm}, cands)
-            m.complex_id, m.score = cid, round(sc, 3)
-        s.execute(text("""
-            UPDATE trade SET complex_id = (
-                SELECT CASE WHEN m.complex_id > 0 THEN m.complex_id END
-                FROM apt_mapping m WHERE m.apt_key = trade.apt_key)
-        """))
+            if cands:
+                cid, sc = best_match({"umd_nm": m.umd_nm, "jibun": m.jibun, "apt_nm": m.apt_nm}, cands)
+                m.complex_id, m.score = cid, round(sc, 3)
 
 
 def set_manual(apt_key: str, complex_id: int | None):
     """complex_id: 네이버 단지ID, -1 = 해당 없음, None = 자동 매핑으로 되돌림"""
     with Session.begin() as s:
-        m = s.get(AptMapping, apt_key)
-        if m is None:
-            return
         if complex_id is None:
-            m.method, m.complex_id, m.score = "auto", None, None
+            s.execute(delete(ManualMapping).where(ManualMapping.apt_key == apt_key))
         else:
-            m.method, m.complex_id = "manual", complex_id
-    apply_mappings()
-
-
-def reset_auto_for_complex_area():
-    """새 관심 단지가 추가되면 자동 매핑 결과를 다시 계산하도록 미매핑 상태로 되돌린다."""
-    with Session.begin() as s:
-        s.execute(update(AptMapping).where(AptMapping.method == "auto").values(complex_id=None, score=None))
-    apply_mappings()
+            s.merge(ManualMapping(apt_key=apt_key, complex_id=complex_id))

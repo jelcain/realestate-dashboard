@@ -35,6 +35,20 @@ copy .env.example .env      # 그다음 .env 에 공공데이터포털 키 입�
 powershell -ExecutionPolicy Bypass -File .\register_task.ps1
 ```
 
+## 클라우드 분담 모드 (PC 가 꺼져 있어도 실거래·뉴스 수집)
+
+`.env` 에 `MYBOX_TOKEN` 이 있으면 켜진다. 없으면 PC 가 모두 수집하는 로컬 모드.
+
+| 담당 | 수집 | 저장 (MYBOX `realestate-dashboard` 폴더) |
+|---|---|---|
+| GitHub Actions (`.github/workflows/daily.yml`, 매일 05:00) | 국토부 실거래, 뉴스 | `cloud.db.gz` |
+| PC (켜져 있을 때, 작업 스케줄러 05:00) | 네이버 단지 정보·매물 | `pc.db.gz` |
+
+- 네이버페이 부동산은 해외 데이터센터 IP 를 막아서 매물은 PC 가 맡는다 (`scripts/naver_probe.py` 로 확인).
+- 대시보드는 10분마다 MYBOX 에서 새 `cloud.db` 를 받는다.
+- GitHub 저장소 시크릿: `MYBOX_TOKEN`, `MOLIT_SERVICE_KEY`
+- MYBOX 토큰 유효기간(최대 180일)이 지나면 새로 발급해 `.env` 와 시크릿을 둘 다 바꾼다.
+
 ## 사용 순서
 
 1. 대시보드의 **➕ 관심 단지 등록**에서 이름 검색이나 시/도 › 시군구 › 동 선택으로 단지를 등록한다.

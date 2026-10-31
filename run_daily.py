@@ -1,4 +1,10 @@
-"""일일 배치 진입점 (Windows 작업 스케줄러가 매일 05:00 실행, 대시보드의 '지금 수집' 단추도 이것을 실행).
+"""수집 배치 진입점.
+
+실행 위치에 따라 맡는 일이 다르다.
+  - 클라우드(GitHub Actions): 실거래·뉴스. 시작할 때 MYBOX 에서 pc.db·cloud.db 를 받고, 끝나면 cloud.db 를 올린다.
+  - PC + MYBOX_TOKEN 있음(분담 모드): 단지 정보·매물. 끝나면 pc.db 를 올린다.
+    실거래·뉴스를 요청하면 pc.db 를 먼저 올린 뒤 클라우드 수집을 실행시킨다.
+  - PC + 토큰 없음(로컬 모드): 전부 PC 에서.
 
 사용법:
   python run_daily.py                    # 전체 (단지 정보 → 실거래 → 매물 → 뉴스)
@@ -15,9 +21,11 @@ import os
 import subprocess
 import sys
 
-from settings import ROOT
+from settings import ROOT, cloud_mode, on_cloud
 
 STEPS = ["complex", "trade", "listing", "news"]
+CLOUD_STEPS = {"trade", "news"}   # 클라우드 분담 모드에서 클라우드가 맡는 일
+PC_STEPS = {"complex", "listing"}  # 네이버페이 부동산은 해외 IP 를 막아서 PC 가 맡는다
 LOCK = ROOT / "logs" / "run_daily.lock"
 LOG = ROOT / "logs" / "run_daily.log"
 
@@ -75,12 +83,15 @@ def main(argv=None):
     p.add_argument("--only", help="쉼표로 구분: " + ",".join(STEPS))
     p.add_argument("--complex", help="네이버 단지번호 (쉼표로 여러 개)")
     args = p.parse_args(argv)
-    steps = args.only.split(",") if args.only else STEPS
-    ids = [int(x) for x in args.complex.split(",")] if args.complex else None
+    steps = [s for s in args.only.split(",") if s] if args.only else STEPS
+    ids = [int(x) for x in args.complex.split(",") if x] if args.complex else None
     if ids and not args.only:
         steps = ["complex", "trade", "listing"]
     setup_logging()
     log = logging.getLogger("run_daily")
+
+    if on_cloud():
+        return run_cloud([s for s in steps if s in CLOUD_STEPS], ids, log)
 
     other = running()
     if other:
@@ -89,8 +100,50 @@ def main(argv=None):
     LOCK.write_text(json.dumps({"pid": os.getpid(), "started": datetime.now().strftime("%Y-%m-%d %H:%M"),
                                 "args": sys.argv[1:] if argv is None else argv}, ensure_ascii=False),
                     encoding="utf-8")
-    log.info("수집 시작: %s%s", ",".join(steps), f" (단지 {ids})" if ids else "")
+    try:
+        if cloud_mode():
+            # 이 프로세스는 cloud.db 를 열지 않는다 → 대시보드가 수집 중에도 cloud.db 를 새 파일로 바꿀 수 있다
+            os.environ["REALESTATE_ATTACH_CLOUD"] = "0"
+            return run_pc_shared(steps, ids, log)
+        log.info("수집 시작 (로컬 모드): %s%s", ",".join(steps), f" (단지 {ids})" if ids else "")
+        collect(steps, ids, log)
+        return 0
+    finally:
+        LOCK.unlink(missing_ok=True)
 
+
+def run_cloud(steps: list[str], ids: list[int] | None, log) -> int:
+    """GitHub Actions: MYBOX 에서 받기 → 실거래·뉴스 → cloud.db 올리기"""
+    from storage import sync
+    log.info("클라우드 수집 시작: %s%s", ",".join(steps), f" (단지 {ids})" if ids else "")
+    sync.pull("pc", force=True)
+    sync.pull("cloud", force=True)
+    collect(steps, ids, log)
+    sync.push("cloud")
+    return 0
+
+
+def run_pc_shared(steps: list[str], ids: list[int] | None, log) -> int:
+    """PC 분담 모드: 단지 정보·매물은 PC 에서, 실거래·뉴스는 클라우드에 맡긴다"""
+    from storage import cloud_run, sync
+    local = [s for s in steps if s in PC_STEPS]
+    remote = [s for s in steps if s in CLOUD_STEPS]
+    log.info("수집 시작 (분담 모드): PC=%s, 클라우드=%s%s", ",".join(local) or "-", ",".join(remote) or "-",
+             f" (단지 {ids})" if ids else "")
+    if "complex" in local:
+        collect(["complex"], ids, log)
+    if remote:
+        sync.push("pc")  # 클라우드가 새 관심 단지·매핑을 알 수 있게 먼저 올린다
+        cloud_run.dispatch(ids, remote)
+        log.info("클라우드 수집 요청: %s", ",".join(remote))
+    if "listing" in local:
+        collect(["listing"], ids, log)
+    if local:
+        sync.push("pc")
+    return 0
+
+
+def collect(steps: list[str], ids: list[int] | None, log):
     from collectors.naver_client import Blocked, NaverClient
 
     naver = NaverClient()
@@ -113,11 +166,9 @@ def main(argv=None):
         if "news" in steps:
             from processing import news_summary
             log.info("뉴스 요약: %d건", news_summary.run())
-        log.info("수집 끝")
+        log.info("수집 끝: %s", ",".join(steps))
     finally:
         naver.close()
-        LOCK.unlink(missing_ok=True)
-    return 0
 
 
 if __name__ == "__main__":

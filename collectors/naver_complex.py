@@ -7,7 +7,7 @@ from sqlalchemy import delete, select
 from collectors.naver_client import Blocked, NaverClient
 from db.models import AreaType, Complex, Region, Session, Watchlist, log_collect
 from processing.metrics import area_bucket
-from settings import config
+from settings import cloud_mode, config
 
 log = logging.getLogger(__name__)
 
@@ -130,7 +130,8 @@ def add_to_watchlist(complex_id: int, client: NaverClient | None = None) -> Comp
     with Session.begin() as s:
         if not s.get(Watchlist, complex_id):
             s.add(Watchlist(complex_id=complex_id))
-    apply_mappings()
+    if not cloud_mode():  # 클라우드 분담 모드에선 실거래 쪽(클라우드)이 매핑을 계산한다
+        apply_mappings()
     return cx
 
 

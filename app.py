@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 
-from ui import add_complex, collect, complex_block, data, filters, news_panel, pages
+from ui import add_complex, collect, complex_block, data, filters, news_panel, pages, sync_ui
 
 st.set_page_config(page_title="부동산 대시보드", page_icon="🏢", layout="wide")
 
@@ -55,6 +55,8 @@ def dashboard():
         for _, row in g.iterrows():
             complex_block.render(row, f)
 
+
+sync_ui.refresh()  # 클라우드 분담 모드면 MYBOX 에서 새 실거래·뉴스 자료를 받는다
 
 nav = st.navigation([st.Page(dashboard, title="대시보드", icon="📊", default=True),
                      st.Page(news_panel.page, title="부동산 뉴스", icon="📰", url_path="news"),

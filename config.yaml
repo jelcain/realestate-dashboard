@@ -1,7 +1,13 @@
 # 부동산 정보 조회 시스템 설정
 # API 키는 .env 파일에 둡니다.
 
-db_path: db/realestate.db
+# DB 는 두 파일로 나뉜다 (클라우드 분담 모드에서 각자 한쪽만 고친다)
+#   pc.db    : 관심 단지·단지 정보·평형·매물·수동 매핑 (PC 가 씀)
+#   cloud.db : 국토부 실거래·자동 매핑·뉴스 (클라우드가 씀, 로컬 모드에선 PC 가 씀)
+db_dir: db
+
+github_repo: jelcain/realestate-dashboard
+mybox_folder: realestate-dashboard
 
 # 전월세 전환율 (연, %). 전세 환산가 = 보증금 + 월세 × 12 ÷ (전환율/100)
 conversion_rate: 5.0

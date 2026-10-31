@@ -7,6 +7,7 @@ import streamlit as st
 from sqlalchemy import text
 
 from db.models import Session, Watchlist, engine
+from processing.mapping import EFFECTIVE_SQL
 
 
 def _q(sql: str, **params) -> pd.DataFrame:
@@ -29,9 +30,10 @@ def area_types(complex_id: int) -> pd.DataFrame:
 @st.cache_data(ttl=300)
 def trades(complex_id: int, years: int) -> pd.DataFrame:
     since = date.today().replace(day=1) - timedelta(days=365 * years)
-    df = _q("""SELECT kind, contract_date, exclusive_m2, price, deposit, monthly_rent, converted, floor, apt_dong,
+    df = _q(f"""SELECT kind, contract_date, exclusive_m2, price, deposit, monthly_rent, converted, floor, apt_dong,
                       contract_type, canceled
-               FROM trade WHERE complex_id = :cid AND contract_date >= :since
+               FROM trade WHERE contract_date >= :since AND apt_key IN (
+                   SELECT apt_key FROM ({EFFECTIVE_SQL}) WHERE complex_id = :cid)
                ORDER BY contract_date DESC""", cid=complex_id, since=since)
     df["contract_date"] = pd.to_datetime(df["contract_date"])
     df["canceled"] = df["canceled"].fillna(0).astype(bool)
@@ -88,6 +90,8 @@ def remove_watch(complex_id: int):
         if w:
             s.delete(w)
     watched_complexes.clear()
+    from ui.sync_ui import push_pc_background
+    push_pc_background()
 
 
 def clear_all():

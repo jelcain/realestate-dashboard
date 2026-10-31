@@ -4,6 +4,7 @@ from collections import deque
 import streamlit as st
 
 import run_daily
+from settings import cloud_mode
 from ui import data
 
 STEP_LABELS = {"complex": "단지 정보", "trade": "실거래 (국토부)", "listing": "매물 (네이버)", "news": "뉴스"}
@@ -49,7 +50,11 @@ def sidebar():
             args = [] if len(steps) == len(STEP_LABELS) else ["--only", ",".join(steps)]
             start(args, ", ".join(STEP_LABELS[s] for s in steps))
             st.rerun()
-        st.caption("관심 단지가 많으면 매물 수집에 오래 걸립니다 (단지당 약 10~60초). 창을 닫아도 수집은 계속됩니다.")
+        if cloud_mode():
+            st.caption("단지 정보·매물은 이 PC 에서, 실거래·뉴스는 클라우드(GitHub)에서 수집합니다. "
+                       "클라우드 결과는 몇 분 뒤 '클라우드 자료 지금 받기'로 가져옵니다.")
+        else:
+            st.caption("관심 단지가 많으면 매물 수집에 오래 걸립니다 (단지당 약 10~60초).")
         status()
 
 
