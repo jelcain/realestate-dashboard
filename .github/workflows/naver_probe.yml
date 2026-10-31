@@ -13,4 +13,5 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install httpx pyyaml python-dotenv
+      - run: python scripts/connectivity_probe.py
       - run: python scripts/naver_probe.py
