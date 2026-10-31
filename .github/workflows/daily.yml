@@ -30,9 +30,10 @@ jobs:
       MOLIT_SERVICE_KEY: ${{ secrets.MOLIT_SERVICE_KEY }}
       MYBOX_TOKEN: ${{ secrets.MYBOX_TOKEN }}
       PYTHONIOENCODING: utf-8
+      TZ: Asia/Seoul   # 날짜(뉴스 날짜, 최근 N개월)를 한국 시간으로 계산
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -53,7 +54,7 @@ jobs:
           python run_daily.py "${ARGS[@]}"
       - name: 실행 기록
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: logs
           path: logs/
