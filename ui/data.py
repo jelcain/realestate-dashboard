@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from db.models import Session, Unwatched, Watchlist, engine
 from processing.mapping import EFFECTIVE_SQL
+from settings import config
 
 
 def _q(sql: str, **params) -> pd.DataFrame:
@@ -37,6 +38,19 @@ def trades(complex_id: int, years: int) -> pd.DataFrame:
                ORDER BY contract_date DESC""", cid=complex_id, since=since)
     df["contract_date"] = pd.to_datetime(df["contract_date"])
     df["canceled"] = df["canceled"].fillna(0).astype(bool)
+    return _reconvert(df, "kind")
+
+
+def _reconvert(df: pd.DataFrame, kind_col: str) -> pd.DataFrame:
+    """전세 환산가를 지금 설정(config conversion_rate)으로 다시 계산한다.
+    저장된 값은 수집 당시 전환율이라, 전환율을 바꾸면 과거 자료까지 바로 반영되게 화면에서 계산한다."""
+    if df.empty:
+        return df
+    rate = config()["conversion_rate"] / 100
+    wolse = df[kind_col] == "월세"
+    df.loc[wolse, "converted"] = df.loc[wolse, "deposit"] + df.loc[wolse, "monthly_rent"].fillna(0) * 12 / rate
+    jeonse = df[kind_col] == "전세"
+    df.loc[jeonse, "converted"] = df.loc[jeonse, "deposit"]
     return df
 
 
@@ -46,7 +60,7 @@ def listings(complex_id: int) -> tuple[pd.DataFrame, str | None]:
     if not last:
         return pd.DataFrame(), None
     df = _q("SELECT * FROM listing_snapshot WHERE complex_id = :cid AND collect_date = :d", cid=complex_id, d=last)
-    return df, str(last)
+    return _reconvert(df, "trade_type"), str(last)
 
 
 @st.cache_data(ttl=300)

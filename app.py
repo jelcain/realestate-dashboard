@@ -11,11 +11,12 @@ import streamlit as st
 
 st.set_page_config(page_title="부동산 대시보드", page_icon="🏢", layout="wide")
 
-# Streamlit Secrets(웹) → 환경변수. DB·설정 모듈을 불러오기 전에 해야 한다
+# Streamlit Secrets(웹) → 환경변수. DB·설정 모듈을 불러오기 전에 해야 한다.
+# 화면을 새로 그릴 때마다 덮어써서, Secrets 를 바꾸면(비밀번호·토큰) 앱을 다시 시작하지 않아도 반영된다
 try:
     for _k, _v in st.secrets.items():
         if isinstance(_v, (str, int, float)):
-            os.environ.setdefault(_k, str(_v))
+            os.environ[_k] = str(_v)
 except Exception:  # noqa: BLE001 - 로컬에는 secrets 파일이 없다
     pass
 
