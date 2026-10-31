@@ -26,11 +26,11 @@ def app_version() -> str:
     """실행 중인 코드의 버전 (git 커밋 번호·날짜). 웹과 PC 가 같은 코드인지 확인용"""
     import subprocess
     try:
-        r = subprocess.run(["git", "log", "-1", "--format=%h · %cd", "--date=format:%m/%d %H:%M"],
-                           cwd=ROOT, capture_output=True, text=True, timeout=5,
+        r = subprocess.run(["git", "log", "-1", "--format=%h|%cd", "--date=format:%m/%d %H:%M"],
+                           cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=5,
                            creationflags=0x08000000 if os.name == "nt" else 0)
         if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
+            return " · ".join(r.stdout.strip().split("|"))
     except Exception:  # noqa: BLE001 - git 이 없으면 .git 파일에서 읽는다
         pass
     try:
