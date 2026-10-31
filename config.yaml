@@ -9,6 +9,11 @@ db_dir: db
 github_repo: jelcain/realestate-dashboard
 mybox_folder: realestate-dashboard
 
+retention:
+  # 관심 해제 후 이 기간(일)이 지나면 그 단지의 매물·단지 정보와,
+  # 다른 관심 단지가 없는 시군구의 실거래를 지운다. 그 전에 다시 등록하면 그대로 복원
+  unwatched_days: 30
+
 # 전월세 전환율 (연, %). 전세 환산가 = 보증금 + 월세 × 12 ÷ (전환율/100)
 conversion_rate: 5.0
 

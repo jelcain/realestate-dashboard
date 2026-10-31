@@ -1,12 +1,12 @@
 """대시보드용 DB 조회 (캐시)."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import json
 
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
 
-from db.models import Session, Watchlist, engine
+from db.models import Session, Unwatched, Watchlist, engine
 from processing.mapping import EFFECTIVE_SQL
 
 
@@ -85,13 +85,35 @@ def save_areas(complex_id: int, areas: list[float]):
 
 
 def remove_watch(complex_id: int):
+    """관심 해제: 바로 지우지 않고 '해제 대기'로 옮긴다 (보관 기간이 지나면 수집 때 정리)"""
     with Session.begin() as s:
         w = s.get(Watchlist, complex_id)
         if w:
+            s.merge(Unwatched(complex_id=complex_id, areas=w.areas, removed_at=datetime.now()))
             s.delete(w)
     watched_complexes.clear()
+    unwatched.clear()
     from ui.sync_ui import push_pc_background
     push_pc_background()
+
+
+def restore_watch(complex_id: int):
+    """해제 대기 단지를 다시 관심 단지로 (고른 평형도 복원)"""
+    with Session.begin() as s:
+        u = s.get(Unwatched, complex_id)
+        if u:
+            s.merge(Watchlist(complex_id=complex_id, areas=u.areas))
+            s.delete(u)
+    watched_complexes.clear()
+    unwatched.clear()
+    from ui.sync_ui import push_pc_background
+    push_pc_background()
+
+
+@st.cache_data(ttl=300)
+def unwatched() -> pd.DataFrame:
+    return _q("""SELECT u.complex_id, c.name, c.sido, c.sigungu, c.dong, u.removed_at
+                 FROM unwatched u LEFT JOIN complex c USING (complex_id) ORDER BY u.removed_at DESC""")
 
 
 def clear_all():

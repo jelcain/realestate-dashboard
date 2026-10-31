@@ -73,6 +73,7 @@ def status_page():
         st.info("☁️ 클라우드 분담 모드: 실거래·뉴스는 GitHub 이 매일 05:00 에 수집하고, "
                 "단지 정보·매물은 이 PC 가 수집합니다. 자료는 MYBOX 에 보관됩니다.")
         cloud_runs()
+    unwatched_section()
     st.subheader("최근 실행")
     logs = _q("""SELECT substr(run_at, 1, 16) AS 실행시각, 'PC' AS 위치, collector AS 수집기, status AS 결과,
                         count AS 건수, COALESCE(error, '') AS 오류 FROM collect_log
@@ -90,6 +91,26 @@ def status_page():
     if st.button("실거래 지금 수집 (빠진 달 이어 받기)", disabled=run_daily.running() is not None):
         collect.start(["--only", "trade"], "실거래")
     collect.status()
+
+
+def unwatched_section():
+    from processing.retention import keep_days
+    df = data.unwatched()
+    if df.empty:
+        return
+    days = keep_days()
+    st.subheader("관심 해제 대기")
+    st.caption(f"관심 해제 후 {days}일이 지나면 그 단지의 매물·단지 정보, 그리고 다른 관심 단지가 없는 시군구의 "
+               "실거래가 삭제됩니다. 그 전에 복원하면 고른 평형까지 그대로 돌아옵니다.")
+    for _, r in df.iterrows():
+        removed = pd.to_datetime(r["removed_at"])
+        due = (removed + pd.Timedelta(days=days)).date()
+        c1, c2 = st.columns([5, 1])
+        c1.markdown(f"**{r['name'] or r['complex_id']}** · {r['sigungu'] or ''} {r['dong'] or ''} · "
+                    f"해제 {removed:%Y-%m-%d} → 삭제 예정 {due}")
+        if c2.button("복원", key=f"restore_{r['complex_id']}"):
+            data.restore_watch(int(r["complex_id"]))
+            st.rerun()
 
 
 def cloud_runs():

@@ -99,6 +99,15 @@ class AptMapping(CloudBase):
     score: Mapped[float | None] = mapped_column(Float)
 
 
+class Unwatched(PcBase):
+    """관심 해제한 단지. 보관 기간(config retention.unwatched_days)이 지나면 자료를 지운다.
+    그 전에 다시 등록하면 고른 평형까지 그대로 되살린다."""
+    __tablename__ = "unwatched"
+    complex_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    areas: Mapped[str | None] = mapped_column(Text)
+    removed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
 class ManualMapping(PcBase):
     """사용자가 단지 매핑 화면에서 고친 결과. 자동 매핑보다 우선. complex_id -1 = '해당 없음'"""
     __tablename__ = "manual_mapping"

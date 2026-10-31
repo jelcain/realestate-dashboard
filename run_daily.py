@@ -165,6 +165,16 @@ def run_pc_shared(steps: list[str], ids: list[int] | None, log) -> int:
 def collect(steps: list[str], ids: list[int] | None, log):
     from collectors.naver_client import Blocked, NaverClient
 
+    if ids is None:  # 전체 수집 때 관심 해제 후 보관 기간이 지난 자료를 정리한다
+        from processing import retention
+        try:
+            if "listing" in steps and not on_cloud():
+                retention.cleanup_pc()
+            if "trade" in steps:
+                retention.cleanup_cloud()
+        except Exception:  # noqa: BLE001 - 정리 실패가 수집을 막지 않게
+            log.exception("자료 정리 중 오류")
+
     naver = NaverClient()
     blocked = False
     try:
