@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+db/*.db
+db/*.db-*
+logs/
+# 개인 문서
+부동산 정보 조회 시스템 개발 계획서.md

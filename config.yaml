@@ -1,0 +1,61 @@
+# 부동산 정보 조회 시스템 설정
+# API 키는 .env 파일에 둡니다.
+
+db_path: db/realestate.db
+
+# 전월세 전환율 (연, %). 전세 환산가 = 보증금 + 월세 × 12 ÷ (전환율/100)
+conversion_rate: 5.0
+
+# 평형 구간 (전용면적 ㎡ 기준, [이상, 미만))
+area_buckets:
+  - {name: 소형,     min: 0,   max: 60}
+  - {name: 중소형,   min: 60,  max: 75}
+  - {name: 국민평형, min: 75,  max: 86}
+  - {name: 중대형,   min: 86,  max: 102}
+  - {name: 대형,     min: 102, max: 135}
+  - {name: 초대형,   min: 135, max: 9999}
+
+# 월세 보조 보기: 보증금 구간 (만원, [이상, 미만))
+deposit_bands:
+  - {name: "보증금 1억 미만", min: 0,     max: 10000}
+  - {name: "보증금 1~3억",    min: 10000, max: 30000}
+  - {name: "보증금 3억 이상", min: 30000, max: 99999999}
+
+molit:
+  # 첫 적재 기간 (개월)
+  history_months: 120
+  # 매일 다시 받는 최근 개월 수 (신고 기한·해제 거래 반영)
+  refresh_months: 3
+  # 한 번 실행에 쓸 최대 호출 수 (API별). 개발 계정 하루 한도보다 작게 둔다.
+  max_calls_per_run: 9000
+  rows_per_page: 1000
+
+naver:
+  # 요청 사이 대기 (초, 무작위)
+  min_delay: 2.0
+  max_delay: 4.0
+  # 단지 정보(평형 등) 다시 받는 주기 (일)
+  complex_refresh_days: 7
+  # 매물 유형별 최대 페이지 (페이지당 30건)
+  max_pages_per_type: 10
+
+news:
+  max_items: 10
+  # Google 뉴스 RSS 키워드 검색 (최근 24시간)
+  keywords: [부동산, 아파트값, 전세, 월세, 청약, 주택담보대출, 재건축, 재개발, 집값, 부동산 정책]
+  # 언론사 RSS (요약문 확보용). 필요하면 추가/삭제
+  feeds:
+    - https://www.mk.co.kr/rss/50300009/
+    - https://www.hankyung.com/feed/realestate
+  # 제목·요약에 이 단어가 하나도 없으면 부동산과 무관한 기사로 보고 제외
+  relevance_words: [부동산, 아파트, 집값, 주택, 전세, 전셋, 월세, 청약, 분양, 대출, 금리, 재건축, 재개발, 정비사업,
+                    매매, 매물, 임대, 공급, 토지, 상가, 오피스텔, 빌라, 보유세, 종부세, 양도세, 취득세, 공시가, 규제]
+  # 이 단어가 제목에 있으면 광고성 기사로 보고 제외
+  ad_words: ["[광고]", "[AD]", "분양 문의", "모델하우스 오픈", "견본주택 오픈", "선착순 분양", "특별 분양", "잔여세대"]
+  # 이슈 묶기 기준 (코사인 거리, 작을수록 엄격)
+  cluster_distance: 0.8
+  # 선택 옵션: 로컬 LLM (Ollama)
+  llm:
+    enabled: false
+    url: http://localhost:11434/api/generate
+    model: qwen2.5:7b

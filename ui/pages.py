@@ -1,0 +1,79 @@
+"""보조 화면: 단지 매핑(수동 보정), 수집 현황."""
+import pandas as pd
+import streamlit as st
+
+from collectors import molit_trade
+from processing.mapping import set_manual
+import run_daily
+from settings import config
+from ui import collect, data
+from ui.data import _q
+
+AUTO, NONE = "(자동 매핑)", "해당 없음"
+
+
+def mapping_page():
+    st.header("단지 매핑")
+    st.caption("국토부 실거래 단지명 ↔ 네이버 단지 연결. 관심 단지가 있는 동의 국토부 단지만 표시합니다. "
+               "자동 매핑이 틀렸거나 비어 있으면 '연결 단지'를 고른 뒤 저장하세요.")
+    cx = data.watched_complexes()
+    if cx.empty:
+        st.info("관심 단지가 없습니다.")
+        return
+    rows = _q("""
+        SELECT m.apt_key, m.umd_nm, m.jibun, m.apt_nm, m.complex_id, m.method, m.score, c.name AS cname,
+               (SELECT COUNT(*) FROM trade t WHERE t.apt_key = m.apt_key) AS n
+        FROM apt_mapping m LEFT JOIN complex c ON c.complex_id = m.complex_id
+        WHERE m.sgg_cd || '|' || m.umd_nm IN (
+            SELECT substr(legal_code,1,5) || '|' || dong FROM complex WHERE complex_id IN (SELECT complex_id FROM watchlist))
+        ORDER BY m.umd_nm, (m.complex_id IS NULL), m.apt_nm""")
+    if rows.empty:
+        st.info("아직 실거래 자료가 없습니다. 수집 후 다시 확인하세요.")
+        return
+    only_mapped = st.toggle("연결된 단지만 보기", value=True)
+    if only_mapped:
+        rows = rows[rows["complex_id"].notna()]
+    names = {int(r.complex_id): f"{r['name']} ({r.dong})" for _, r in cx.iterrows()}
+    choices = [AUTO, NONE] + list(names.values())
+
+    def current(r):
+        if r["method"] == "auto":
+            return AUTO
+        return NONE if r["complex_id"] == -1 else names.get(int(r["complex_id"]), AUTO)
+
+    view = pd.DataFrame({
+        "apt_key": rows["apt_key"], "동": rows["umd_nm"], "지번": rows["jibun"], "국토부 단지명": rows["apt_nm"],
+        "거래 수": rows["n"],
+        "자동 결과": rows.apply(lambda r: f"{r['cname']} ({r['score']:.2f})" if r["method"] == "auto" and r["cname"]
+                            else ("-" if r["method"] == "auto" else "수동"), axis=1),
+        "연결 단지": rows.apply(current, axis=1),
+    })
+    edited = st.data_editor(view, hide_index=True, width="stretch", disabled=[c for c in view if c != "연결 단지"],
+                            column_config={"apt_key": None,
+                                           "연결 단지": st.column_config.SelectboxColumn(options=choices, required=True)})
+    if st.button("저장", type="primary"):
+        inv = {v: k for k, v in names.items()}
+        changed = edited[edited["연결 단지"] != view["연결 단지"]]
+        for _, r in changed.iterrows():
+            v = r["연결 단지"]
+            set_manual(r["apt_key"], None if v == AUTO else (-1 if v == NONE else inv[v]))
+        data.clear_all()
+        st.success(f"{len(changed)}건 저장")
+        st.rerun()
+
+
+def status_page():
+    st.header("수집 현황")
+    st.subheader("최근 실행")
+    st.dataframe(_q("SELECT run_at AS 실행시각, collector AS 수집기, status AS 결과, count AS 건수, error AS 오류 "
+                    "FROM collect_log ORDER BY id DESC LIMIT 50"), hide_index=True, width="stretch")
+    st.subheader("국토부 실거래 적재 진행")
+    prog = _q("""SELECT sgg_cd AS 시군구코드, api AS API, COUNT(*) AS 받은개월, MIN(deal_ym) AS 시작월,
+                        MAX(deal_ym) AS 마지막월, SUM(rows) AS 건수
+                 FROM molit_progress GROUP BY sgg_cd, api ORDER BY sgg_cd, api""")
+    st.dataframe(prog, hide_index=True, width="stretch")
+    sggs = molit_trade.target_sggs()
+    st.caption(f"관심 단지 시군구: {', '.join(sggs) or '-'} · 목표 {config()['molit']['history_months']}개월")
+    if st.button("실거래 지금 수집 (빠진 달 이어 받기, 백그라운드)", disabled=run_daily.running() is not None):
+        collect.start(["--only", "trade"], "실거래")
+    collect.status()
