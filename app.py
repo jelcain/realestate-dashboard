@@ -1,12 +1,48 @@
-"""Streamlit 대시보드.  실행: streamlit run app.py  →  http://localhost:8501"""
-from datetime import datetime, timedelta
+"""Streamlit 대시보드.  실행: streamlit run app.py  →  http://localhost:8501
 
-import pandas as pd
+웹(Streamlit Community Cloud)에서는 Secrets 의 WEB_MODE="1" 로 보기 전용 모드가 되고, APP_PASSWORD 로 잠근다.
+"""
+from datetime import datetime, timedelta
+import hmac
+import os
+import time
+
 import streamlit as st
 
-from ui import add_complex, collect, complex_block, data, filters, news_panel, pages, sync_ui
-
 st.set_page_config(page_title="부동산 대시보드", page_icon="🏢", layout="wide")
+
+# Streamlit Secrets(웹) → 환경변수. DB·설정 모듈을 불러오기 전에 해야 한다
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, (str, int, float)):
+            os.environ.setdefault(_k, str(_v))
+except Exception:  # noqa: BLE001 - 로컬에는 secrets 파일이 없다
+    pass
+
+import pandas as pd  # noqa: E402
+
+from settings import web_mode  # noqa: E402
+from ui import add_complex, collect, complex_block, data, filters, news_panel, pages, sync_ui  # noqa: E402
+
+
+def login() -> bool:
+    """웹 모드 비밀번호 확인. 비밀번호가 설정되지 않았으면 아예 열지 않는다"""
+    if not web_mode() or st.session_state.get("authed"):
+        return True
+    expected = os.getenv("APP_PASSWORD", "")
+    st.title("🏢 부동산 대시보드")
+    if not expected:
+        st.error("APP_PASSWORD 가 설정되지 않아 열 수 없습니다. Streamlit 앱 설정의 Secrets 에 추가하세요.")
+        return False
+    with st.form("login"):
+        pw = st.text_input("비밀번호", type="password")
+        if st.form_submit_button("들어가기", type="primary"):
+            if hmac.compare_digest(pw.encode(), expected.encode()):
+                st.session_state["authed"] = True
+                st.rerun()
+            time.sleep(2)  # 비밀번호 무작위 대입을 느리게
+            st.error("비밀번호가 틀렸습니다.")
+    return False
 
 
 def anchor(code: str) -> str:
@@ -40,13 +76,17 @@ def sidebar_tree(shown: pd.DataFrame):
 def dashboard():
     st.title("관심 단지 대시보드")
     stale_warning()
-    collect.sidebar()
+    if web_mode():
+        st.caption("🌐 웹 보기 전용 — 단지 등록·수집·관심 해제는 집 PC 의 대시보드에서 합니다.")
+    else:
+        collect.sidebar()
     cx = data.watched_complexes()
     f = filters.render(cx)
-    add_complex.render()
+    if not web_mode():
+        add_complex.render()
     news_panel.render()
     if cx.empty:
-        st.info("관심 단지를 추가하세요.")
+        st.info("관심 단지가 없습니다." if web_mode() else "관심 단지를 추가하세요.")
         return
     shown = filters.apply_region(cx, f)
     sidebar_tree(shown)
@@ -56,10 +96,11 @@ def dashboard():
             complex_block.render(row, f)
 
 
-sync_ui.refresh()  # 클라우드 분담 모드면 MYBOX 에서 새 실거래·뉴스 자료를 받는다
-
-nav = st.navigation([st.Page(dashboard, title="대시보드", icon="📊", default=True),
-                     st.Page(news_panel.page, title="부동산 뉴스", icon="📰", url_path="news"),
-                     st.Page(pages.mapping_page, title="단지 매핑", icon="🔗", url_path="mapping"),
-                     st.Page(pages.status_page, title="수집 현황", icon="🗂️", url_path="status")])
-nav.run()
+if login():
+    sync_ui.refresh()  # 클라우드 분담 모드·웹 모드면 MYBOX 에서 새 자료를 받는다
+    page_list = [st.Page(dashboard, title="대시보드", icon="📊", default=True),
+                 st.Page(news_panel.page, title="부동산 뉴스", icon="📰", url_path="news")]
+    if not web_mode():
+        page_list.append(st.Page(pages.mapping_page, title="단지 매핑", icon="🔗", url_path="mapping"))
+    page_list.append(st.Page(pages.status_page, title="수집 현황", icon="🗂️", url_path="status"))
+    st.navigation(page_list).run()

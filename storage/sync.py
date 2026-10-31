@@ -14,12 +14,12 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from settings import config, mybox_token
+from settings import config, db_dir, mybox_token
 from storage.mybox import MyBox
 
 log = logging.getLogger(__name__)
 
-STATE = Path(__file__).resolve().parent.parent / "db" / ".sync.json"
+STATE = db_dir() / ".sync.json"
 
 
 def _local(name: str) -> Path:

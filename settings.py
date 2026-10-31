@@ -17,7 +17,13 @@ def config() -> dict:
 
 
 def db_dir() -> Path:
-    return ROOT / config()["db_dir"]
+    # REALESTATE_DB_DIR: 다른 위치의 DB 를 쓸 때 (시험용)
+    return Path(os.getenv("REALESTATE_DB_DIR") or ROOT / config()["db_dir"])
+
+
+def web_mode() -> bool:
+    """웹(Streamlit Community Cloud) 보기 전용 모드: MYBOX 에서 받기만 하고, 수집·등록·수정은 숨긴다"""
+    return os.getenv("WEB_MODE") == "1"
 
 
 def molit_key(api: str) -> str:

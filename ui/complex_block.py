@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 import streamlit as st
 
 from processing.metrics import area_bucket, area_label, fmt_money, fmt_range, monthly_series, snap_area, to_pyeong
-from settings import config
+from settings import config, web_mode
 from ui import collect, data
 from ui.filters import Filters
 
@@ -226,11 +226,12 @@ def render(cx: pd.Series, f: Filters):
         h1.markdown(f"#### {cx['name']} <span style='font-size:0.8em;color:{MUTED}'>"
                     f"{cx['households'] or '-'}세대{built}</span>", unsafe_allow_html=True)
         show = h2.toggle("펼치기", value=True, key=f"open_{cid}")
-        collect.complex_button(cid, cx["name"], h3)
-        if h4.button("관심 해제", key=f"rm_{cid}",
-                     help="해제 후 30일이 지나면 이 단지의 수집 자료가 삭제됩니다. 그 전에는 '수집 현황'에서 복원할 수 있습니다."):
-            data.remove_watch(cid)
-            st.rerun()
+        if not web_mode():  # 웹 보기 전용에선 수집·관심 해제를 숨긴다
+            collect.complex_button(cid, cx["name"], h3)
+            if h4.button("관심 해제", key=f"rm_{cid}",
+                         help="해제 후 30일이 지나면 이 단지의 수집 자료가 삭제됩니다. 그 전에는 '수집 현황'에서 복원할 수 있습니다."):
+                data.remove_watch(cid)
+                st.rerun()
         if not show:
             return
         if not options:

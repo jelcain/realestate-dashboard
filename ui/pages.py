@@ -5,7 +5,7 @@ import streamlit as st
 from collectors import molit_trade
 from processing.mapping import set_manual
 import run_daily
-from settings import cloud_mode, config
+from settings import cloud_mode, config, web_mode
 from ui import collect, data, sync_ui
 from ui.data import _q
 
@@ -69,7 +69,10 @@ def mapping_page():
 
 def status_page():
     st.header("수집 현황")
-    if cloud_mode():
+    if web_mode():
+        st.info("🌐 웹 보기 전용: 실거래·뉴스는 매일 05:00 클라우드가, 매물은 집 PC 가 수집해 MYBOX 에 올린 자료를 "
+                "보여 줍니다. 수집·복원은 집 PC 대시보드에서 하세요.")
+    elif cloud_mode():
         st.info("☁️ 클라우드 분담 모드: 실거래·뉴스는 GitHub 이 매일 05:00 에 수집하고, "
                 "단지 정보·매물은 이 PC 가 수집합니다. 자료는 MYBOX 에 보관됩니다.")
         cloud_runs()
@@ -88,6 +91,8 @@ def status_page():
     st.dataframe(prog, hide_index=True, width="stretch")
     sggs = molit_trade.target_sggs()
     st.caption(f"관심 단지 시군구: {', '.join(sggs) or '-'} · 목표 {config()['molit']['history_months']}개월")
+    if web_mode():
+        return
     if st.button("실거래 지금 수집 (빠진 달 이어 받기)", disabled=run_daily.running() is not None):
         collect.start(["--only", "trade"], "실거래")
     collect.status()
@@ -108,7 +113,7 @@ def unwatched_section():
         c1, c2 = st.columns([5, 1])
         c1.markdown(f"**{r['name'] or r['complex_id']}** · {r['sigungu'] or ''} {r['dong'] or ''} · "
                     f"해제 {removed:%Y-%m-%d} → 삭제 예정 {due}")
-        if c2.button("복원", key=f"restore_{r['complex_id']}"):
+        if not web_mode() and c2.button("복원", key=f"restore_{r['complex_id']}"):
             data.restore_watch(int(r["complex_id"]))
             st.rerun()
 
